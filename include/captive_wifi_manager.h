@@ -34,6 +34,9 @@ namespace captive_wifi
 
         // Подключение к заданной Wi‑Fi сети (останавливает AP и сервер при успехе)
         void connect(const char *ssid, const char *password);
+        
+        // Сброс текущего подключения и запуск точки доступа снова
+        void reset();
 
         // Возвращает true, если устройство подключено к внешней сети
         bool isConnected() const { return _connected; }
@@ -54,6 +57,7 @@ namespace captive_wifi
         void _handle_captive_portal();
         void _handle_submit();
         bool _try_restore_credentials(char *ssid_buf, char *password_buf);
+        static void erase_wifi_creds();
         const char *_ap_ssid;
         const char *_portal_html;
         DNSServer _dns_server;

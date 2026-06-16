@@ -7,7 +7,12 @@ manager::manager(const char *apSSID, const char *portalHTML)
     : _ap_ssid(apSSID), _portal_html(portalHTML), _server(80), _connected(false), _con_attempt_handler(nullptr), _con_res_handler(nullptr), _ap_created_handler(nullptr)
 {
 }
-
+void manager::erase_wifi_creds()
+{
+    wifi_credentials creds = {0x00};
+    EEPROM.writeBytes(EEPROM_ADDRESS, &creds, sizeof(wifi_credentials));
+    EEPROM.commit();
+}
 void manager::begin()
 {
     static bool restored_con_attempted = false;
@@ -18,9 +23,7 @@ void manager::begin()
     {
         if (restored_con_attempted)
         {
-            wifi_credentials creds = {0x00};
-            EEPROM.writeBytes(EEPROM_ADDRESS, &creds, sizeof(wifi_credentials));
-            EEPROM.commit();
+            erase_wifi_creds();
         }
         else
         {
@@ -49,13 +52,12 @@ void manager::begin()
     static char redirect_ip[32] = "/";
     sprintf(redirect_ip, "http://%s/", myIp.toString().c_str());
     // Настройка маршрутов веб-сервера
-    _server.onNotFound([this]() {
+    _server.onNotFound([this]()
+                       {
         this->_server.sendHeader("Location", redirect_ip);
-        this->_server.send(302, "text/plain", "redirect to main page");
-    });
-    _server.on("/", [this]() {
-        this->_handle_captive_portal();
-    });
+        this->_server.send(302, "text/plain", "redirect to main page"); });
+    _server.on("/", [this]()
+               { this->_handle_captive_portal(); });
     _server.on("/submit", [this]()
                { this->_handle_submit(); });
     _server.begin();
@@ -107,6 +109,12 @@ void manager::connect(const char *ssid, const char *password)
     _connected = false;
     if (_con_res_handler != nullptr)
         _con_res_handler(_connected);
+    begin();
+}
+void manager::reset()
+{
+    _connected = false;
+    erase_wifi_creds();
     begin();
 }
 inline void manager::_handle_captive_portal()

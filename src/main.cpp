@@ -6,6 +6,7 @@
 #include "captive_wifi_manager.h"
 #include "time.h"
 #include "openweather_client.h"
+#include "button.h"
 
 const char *ntp_server = "pool.ntp.org";
 const long gmt_offset_sec = 10800;
@@ -25,6 +26,7 @@ extern const char *connect_page_html;
 captive_wifi::manager wifi_manager("tinyRobot", connect_page_html);
 HTTPClient http_client;
 openweather::client weather_client(&http_client, 53.9, 27.56);
+button btn(SENS_BTN_GPIO, 1);
 // Графические ресурсы (оставлены без изменений)
 #include "FreeSansBold24pt7b.h"
 #include "Petme8x8.h"
@@ -173,16 +175,7 @@ const unsigned char image_cloud_small_bits[] = { // w - 22 : h - 16
 void get_datetime(char *date_buf, size_t date_size, char *time_buf, size_t time_size)
 {
   tm time_info;
-  time_info.tm_hour = 0;
-  time_info.tm_isdst = 0;
-  time_info.tm_mday = 0;
-  time_info.tm_min = 0;
-  time_info.tm_mon = 0;
-  time_info.tm_sec = 0;
-  time_info.tm_wday = 0;
-  time_info.tm_yday = 0;
-  time_info.tm_year = 0;
-  // getLocalTime(&time_info);
+  getLocalTime(&time_info);
   strftime(date_buf, date_size, "%d %B", &time_info);
   strftime(time_buf, time_size, "%02H:%02M", &time_info);
 }
@@ -192,10 +185,10 @@ void drawScreen_1(void)
   char time_buf[6];
   char date_buf[32];
   static uint32_t ntp_request_timer = 0;
-  // if (ntp_request_timer == 0 || millis() - ntp_request_timer >= NTP_REQUEST_PERIOD_MS) {
-  //   configTime(gmt_offset_sec, daylight_offset_sec, ntp_server);
-  //   ntp_request_timer = millis();
-  // }
+  if (ntp_request_timer == 0 || millis() - ntp_request_timer >= NTP_REQUEST_PERIOD_MS) {
+    configTime(gmt_offset_sec, daylight_offset_sec, ntp_server);
+    ntp_request_timer = millis();
+  }
   display.clearDisplay();
   display.setTextColor(1);
   display.setFont(&FreeSansBold24pt7b);
@@ -286,6 +279,7 @@ void drawScreen_3(void)
 void wifi_manager_connection_attempt_handler(const char *ssid)
 {
   display.clearDisplay();
+  display.setFont(nullptr);
   display.setCursor(0, 0);
   display.print("Connecting to: ");
   display.print(ssid);
@@ -294,6 +288,7 @@ void wifi_manager_connection_attempt_handler(const char *ssid)
 void wifi_manager_connection_result_handler(bool connected)
 {
   display.clearDisplay();
+  display.setFont(nullptr);
   display.setCursor(0, 0);
   if (connected)
   {
@@ -308,6 +303,7 @@ void wifi_manager_connection_result_handler(bool connected)
 void wifi_manager_ap_created_handler(const char *ssid, const char *ip)
 {
   display.clearDisplay();
+  display.setFont(nullptr);
   display.setCursor(0, 0);
   display.print("SSID: ");
   display.println(ssid);
@@ -315,29 +311,6 @@ void wifi_manager_ap_created_handler(const char *ssid, const char *ip)
   display.println(ip);
   display.display();
 }
-void setup()
-{
-  Serial.begin(115200);
-  // Инициализация дисплея
-  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
-  {
-    Serial.println(F("SSD1306 allocation failed"));
-    for (;;)
-      ;
-  }
-  robo_eyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 60);
-  display.clearDisplay();
-  display.setTextColor(1);
-  display.println("Starting AP...");
-  display.display();
-  // wifi_manager.add_connection_attempt_handler(wifi_manager_connection_attempt_handler);
-  // wifi_manager.add_connection_result_handler(wifi_manager_connection_result_handler);
-  // wifi_manager.add_ap_created_handler(wifi_manager_ap_created_handler);
-  // wifi_manager.begin();
-
-  pinMode(SENS_BTN_GPIO, INPUT);
-}
-
 void drawing_routine(int current_screen)
 {
   static uint32_t drawing_timer = 0;
@@ -362,35 +335,42 @@ void drawing_routine(int current_screen)
   drawing_timer = millis();
   previous_screen = current_screen;
 }
+void setup()
+{
+  Serial.begin(115200);
+  // Инициализация дисплея
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ;
+  }
+  robo_eyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 60);
+  display.clearDisplay();
+  display.setTextColor(1);
+  display.println("Starting AP...");
+  display.display();
+  wifi_manager.add_connection_attempt_handler(wifi_manager_connection_attempt_handler);
+  wifi_manager.add_connection_result_handler(wifi_manager_connection_result_handler);
+  wifi_manager.add_ap_created_handler(wifi_manager_ap_created_handler);
+  wifi_manager.begin();
+  btn.set_long_press_handler([]() {
+    wifi_manager.reset();
+  });
+  btn.begin();
+}
 void loop()
 {
   static int current_screen = 0;
   static bool btn_pressed_before = false;
-  // wifi_manager.handle();
-  // if (wifi_manager.isConnected())
-  // {
-  //   while (1)
-  //   {
-  //     switch (current_screen)
-  //     {
-  //     case 0:
-  //       drawScreen_1();
-  //       delay(5000);
-  //       break;
-  //     case 1:
-  //       drawScreen_2();
-  //       robo_eyes.update();
-  //       break;
-  //     case 2:
-  //       drawScreen_3();
-  //       delay(5000);
-  //       break;
-  //     }
-  //   }
-  // }
-  if (!btn_pressed_before && digitalRead(SENS_BTN_GPIO))
+  btn.tick();
+  if (!wifi_manager.isConnected()) {
+    wifi_manager.handle();
+    delay(5);
+    return;
+  }
+  if (btn.is_clicked())
   {
-    log_i("btn_pressed");
     btn_pressed_before = true;
     current_screen = (current_screen + 1) % 3;
   }
