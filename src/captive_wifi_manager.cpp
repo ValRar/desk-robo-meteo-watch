@@ -46,10 +46,11 @@ void manager::begin()
         while (1)
             ;
     }
-
+    static char redirect_ip[32] = "/";
+    sprintf(redirect_ip, "http://%s/", myIp.toString().c_str());
     // Настройка маршрутов веб-сервера
     _server.onNotFound([this]() {
-        this->_server.sendHeader("Location", "/");
+        this->_server.sendHeader("Location", redirect_ip);
         this->_server.send(302, "text/plain", "redirect to main page");
     });
     _server.on("/", [this]() {
@@ -78,6 +79,7 @@ void manager::connect(const char *ssid, const char *password)
 
     WiFi.mode(WIFI_MODE_STA);
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    log_i("WiFi credentials   SSID: %s, Password: %s", ssid, password);
     WiFi.begin(ssid, (password[0] == '\0') ? nullptr : password);
     if (_con_attempt_handler != nullptr)
         _con_attempt_handler(ssid);
@@ -101,7 +103,7 @@ void manager::connect(const char *ssid, const char *password)
     }
 
     // Не удалось подключиться – перезапускаем точку доступа
-    log_e("Failed to connect, restarting AP");
+    log_e("Failed to connect, reason: %d", WiFi.status());
     _connected = false;
     if (_con_res_handler != nullptr)
         _con_res_handler(_connected);

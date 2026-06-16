@@ -18,6 +18,7 @@ const int daylight_offset_sec = 0;
 #define SCREEN_ADDRESS 0x3C
 #define OPENWEATHER_REQUEST_PERIOD_MS 3600000UL
 #define NTP_REQUEST_PERIOD_MS 1800000UL
+#define SENS_BTN_GPIO 3
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 RoboEyes<Adafruit_SSD1306> robo_eyes(display);
 extern const char *connect_page_html;
@@ -172,7 +173,16 @@ const unsigned char image_cloud_small_bits[] = { // w - 22 : h - 16
 void get_datetime(char *date_buf, size_t date_size, char *time_buf, size_t time_size)
 {
   tm time_info;
-  getLocalTime(&time_info);
+  time_info.tm_hour = 0;
+  time_info.tm_isdst = 0;
+  time_info.tm_mday = 0;
+  time_info.tm_min = 0;
+  time_info.tm_mon = 0;
+  time_info.tm_sec = 0;
+  time_info.tm_wday = 0;
+  time_info.tm_yday = 0;
+  time_info.tm_year = 0;
+  // getLocalTime(&time_info);
   strftime(date_buf, date_size, "%d %B", &time_info);
   strftime(time_buf, time_size, "%02H:%02M", &time_info);
 }
@@ -182,10 +192,10 @@ void drawScreen_1(void)
   char time_buf[6];
   char date_buf[32];
   static uint32_t ntp_request_timer = 0;
-  if (ntp_request_timer == 0 || millis() - ntp_request_timer >= NTP_REQUEST_PERIOD_MS) {
-    configTime(gmt_offset_sec, daylight_offset_sec, ntp_server);
-    ntp_request_timer = millis();
-  }
+  // if (ntp_request_timer == 0 || millis() - ntp_request_timer >= NTP_REQUEST_PERIOD_MS) {
+  //   configTime(gmt_offset_sec, daylight_offset_sec, ntp_server);
+  //   ntp_request_timer = millis();
+  // }
   display.clearDisplay();
   display.setTextColor(1);
   display.setFont(&FreeSansBold24pt7b);
@@ -211,17 +221,22 @@ void drawScreen_3(void)
 {
   static openweather::forecast forecast = {0, 0, 0, 0, 0, openweather::weather_type::Clear};
   static uint32_t openweather_request_timer = 0;
+  static bool is_request_success = false;
   display.clearDisplay();
   if (openweather_request_timer == 0 || millis() - openweather_request_timer >= OPENWEATHER_REQUEST_PERIOD_MS)
   {
     openweather_request_timer = millis();
     openweather::result res = weather_client.get_weather(&forecast);
-    if (res != openweather::result::Ok)
-    {
-      display.print("Error!");
-      display.display();
-      return;
-    }
+    is_request_success = res == openweather::result::Ok; 
+  }
+  if (!is_request_success)
+  {
+    display.setFont(NULL);
+    display.setTextColor(1);
+    display.setCursor(0, 0);
+    display.println("Failed to get forecast!");
+    display.display();
+    return;
   }
   switch (forecast.weather)
   {
@@ -315,43 +330,73 @@ void setup()
   display.setTextColor(1);
   display.println("Starting AP...");
   display.display();
-  wifi_manager.add_connection_attempt_handler(wifi_manager_connection_attempt_handler);
-  wifi_manager.add_connection_result_handler(wifi_manager_connection_result_handler);
-  wifi_manager.add_ap_created_handler(wifi_manager_ap_created_handler);
-  wifi_manager.begin();
+  // wifi_manager.add_connection_attempt_handler(wifi_manager_connection_attempt_handler);
+  // wifi_manager.add_connection_result_handler(wifi_manager_connection_result_handler);
+  // wifi_manager.add_ap_created_handler(wifi_manager_ap_created_handler);
+  // wifi_manager.begin();
+
+  pinMode(SENS_BTN_GPIO, INPUT);
 }
 
+void drawing_routine(int current_screen)
+{
+  static uint32_t drawing_timer = 0;
+  static int previous_screen = -1;
+  if (current_screen != 1 && current_screen == previous_screen && millis() - drawing_timer < 5000UL)
+  {
+    return;
+  }
+  switch (current_screen)
+  {
+  case 0:
+    drawScreen_1();
+    break;
+  case 1:
+    drawScreen_2();
+    robo_eyes.update();
+    break;
+  case 2:
+    drawScreen_3();
+    break;
+  }
+  drawing_timer = millis();
+  previous_screen = current_screen;
+}
 void loop()
 {
-  static uint32_t current_screen = 0;
-  static uint32_t screen_change_timer = 0;
-  wifi_manager.handle();
-  if (wifi_manager.isConnected())
+  static int current_screen = 0;
+  static bool btn_pressed_before = false;
+  // wifi_manager.handle();
+  // if (wifi_manager.isConnected())
+  // {
+  //   while (1)
+  //   {
+  //     switch (current_screen)
+  //     {
+  //     case 0:
+  //       drawScreen_1();
+  //       delay(5000);
+  //       break;
+  //     case 1:
+  //       drawScreen_2();
+  //       robo_eyes.update();
+  //       break;
+  //     case 2:
+  //       drawScreen_3();
+  //       delay(5000);
+  //       break;
+  //     }
+  //   }
+  // }
+  if (!btn_pressed_before && digitalRead(SENS_BTN_GPIO))
   {
-    screen_change_timer = millis();
-    while (1)
-    {
-      switch (current_screen)
-      {
-      case 0:
-        drawScreen_1();
-        delay(5000);
-        break;
-      case 1:
-        drawScreen_2();
-        robo_eyes.update();
-        break;
-      case 2:
-        drawScreen_3();
-        delay(5000);
-        break;
-      }
-      if (millis() - screen_change_timer > 10000UL)
-      {
-        screen_change_timer = millis();
-        current_screen = (current_screen + 1) % 3;
-      }
-    }
+    log_i("btn_pressed");
+    btn_pressed_before = true;
+    current_screen = (current_screen + 1) % 3;
   }
-  delay(5);
+  else
+  {
+    btn_pressed_before = static_cast<bool>(digitalRead(SENS_BTN_GPIO));
+  }
+  drawing_routine(current_screen);
 }

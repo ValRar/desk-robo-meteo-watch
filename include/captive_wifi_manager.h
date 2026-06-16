@@ -62,7 +62,7 @@ namespace captive_wifi
         connection_attempt_handler _con_attempt_handler;
         connection_result_handler _con_res_handler;
         ap_created_handler _ap_created_handler;
-        static const unsigned long WIFI_TIMEOUT_MS = 15000;
+        static const unsigned long WIFI_TIMEOUT_MS = 30000UL;
         static const byte DNS_PORT = 53;
         static const uint32_t EEPROM_ADDRESS = 0;
     };
