@@ -75,7 +75,6 @@ void manager::handle()
 void manager::connect(const char *ssid, const char *password)
 {
     static int32_t reconnect_counter = 0;
-    // Останавливаем AP и сервер
     _dns_server.stop();
     _server.stop();
 
@@ -103,8 +102,6 @@ void manager::connect(const char *ssid, const char *password)
         }
         delay(50);
     }
-
-    // Не удалось подключиться – перезапускаем точку доступа
     log_e("Failed to connect, reason: %d", WiFi.status());
     _connected = false;
     if (_con_res_handler != nullptr)
